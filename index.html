@@ -1195,23 +1195,36 @@ function buildOTIFLines(){
     // Considerar
     const cons=(tipoFact==='Guía de despacho'||folio!=='')?'SI':'NO';
 
-    // Trazabilidad (nueva fórmula exacta del Excel):
-    // V2="RETIRA CLIENTE" OR D2 CONTAINS: "RETIRA CLIENTE","CLIENTE RETIRA","REFACTUR","SOLO FACTUR","ENTREGA DIRECTA"
+    // Helper: parse Drivin datetime string to local Date
+    function parseDrivinDT(str){
+      if(!str||str.trim()===''||str==='nan') return null;
+      const s=str.trim().replace(/ p\. m\./gi,' PM').replace(/ a\. m\./gi,' AM')
+                        .replace(/ p\.m\./gi,' PM').replace(/ a\.m\./gi,' AM');
+      const m=s.match(/^(\d{4})-(\d{2})-(\d{2})\s+(\d{1,2}):(\d{2})/);
+      if(m) return new Date(+m[1],+m[2]-1,+m[3],+m[4],+m[5]);
+      const m2=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if(m2){let h=+m2[4];if(/PM/i.test(m2[6])&&h<12)h+=12;if(/AM/i.test(m2[6])&&h===12)h=0;return new Date(+m2[3],+m2[2]-1,+m2[1],h,+m2[5]);}
+      return null;
+    }
+
     const obsI=(r.obsInt||'').toLowerCase();
+
+    // Trazabilidad: =SI(O(V2="RETIRA CLIENTE";HALLAR("RETIRA CLIENTE";D2);HALLAR("CLIENTE RETIRA";D2);
+    //   HALLAR("REFACTUR";D2);HALLAR("SOLO FACTUR";D2);HALLAR("ENTREGA DIRECTA";D2));1;
+    //   SI(O(AZ<>"";AE<>"");1;0))
     const isSpecialTraz=(
       com==='RETIRA CLIENTE'||
       obsI.includes('retira cliente')||obsI.includes('cliente retira')||
       obsI.includes('refactur')||obsI.includes('solo factur')||obsI.includes('entrega directa')
     );
-    const traz=isSpecialTraz?1:(az&&ae?1:0);
+    const traz=isSpecialTraz?1:((az||ae)?1:0);
 
-    // On Time (nueva fórmula Excel):
-    // AZ text > number en Excel → always else→1; NOT found → special(D2)→1 else 0
-    // On Time usa "SOLO FACTURA" (más específico que "SOLO FACTUR")
+    // On Time: =SI(O(especiales);1;SI(O(Y(AZ<>"";AZ<=FHCom);Y(AE<>"";AE<=FHCom));1;0))
+    // Especiales On Time usan "SOLO FACTUR" igual que trazabilidad
     const isSpecialOT=(
       com==='RETIRA CLIENTE'||
       obsI.includes('retira cliente')||obsI.includes('cliente retira')||
-      obsI.includes('refactur')||obsI.includes('solo factura')||obsI.includes('entrega directa')
+      obsI.includes('refactur')||obsI.includes('solo factur')||obsI.includes('entrega directa')
     );
 
     // Fill Rate
@@ -1226,8 +1239,18 @@ function buildOTIFLines(){
     else if(cantF===cant||motivo.includes('POR DIFERENCIA DE KILOS (BOBINAS)')) inf=1;
     else inf=0;
 
-    // On Time: AZ found (string) → Excel string>number → else→1; not found → RETIRA CLIENTE→1 else 0
-    const ot=az?1:(com.includes('RETIRA CLIENTE')?1:0);
+    // On Time: compara AZ o AE contra FHCom (Fecha+Hora compromiso)
+    let ot;
+    if(isSpecialOT){
+      ot=1;
+    } else {
+      const dt2=r.dt; const hora2=r.hora;
+      const fhcom=(dt2&&hora2)?new Date(+dt2.day.split('-')[0],+dt2.day.split('-')[1]-1,+dt2.day.split('-')[2],hora2.h,hora2.m):null;
+      const azDT=parseDrivinDT(az); const aeDT=parseDrivinDT(ae);
+      const azOk=azDT&&fhcom&&azDT<=fhcom;
+      const aeOk=aeDT&&fhcom&&aeDT<=fhcom;
+      ot=(azOk||aeOk)?1:0;
+    }
     const otif=inf*ot;
 
     const dt=r.dt;
