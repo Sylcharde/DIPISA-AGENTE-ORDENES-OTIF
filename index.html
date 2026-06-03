@@ -1558,7 +1558,7 @@ function renderOTIF(){
   // Group by OV for detail table
   const ovMap={};
   filtered.forEach(r=>{
-    if(!ovMap[r.doc]) ovMap[r.doc]={doc:r.doc,cliente:r.cliente,bodega:r.bodega,modalidad:r.modalidad,vendedor:r.vendedor,dt:r.dt,hora:r.hora,frs:[],infs:[],trazs:[],ots:[],otifs:[]};
+    if(!ovMap[r.doc]) ovMap[r.doc]={doc:r.doc,cliente:r.cliente,bodega:r.bodega,modalidad:r.modalidad,vendedor:r.vendedor,tipoFact:r.tipoFact,dt:r.dt,hora:r.hora,frs:[],infs:[],trazs:[],ots:[],otifs:[]};
     if(!ovMap[r.doc].hora&&r.hora) ovMap[r.doc].hora=r.hora;
     ovMap[r.doc].frs.push(r.fr); ovMap[r.doc].infs.push(r.inf);
     ovMap[r.doc].trazs.push(r.traz); ovMap[r.doc].ots.push(r.ot); ovMap[r.doc].otifs.push(r.otif);
@@ -1580,7 +1580,18 @@ function renderOTIF(){
     return`<span style="color:${color};font-weight:600"${title}>${p}%</span>`;
   };
 
+  // OV search state
+  let ovSearchTerm='';
   document.getElementById('tabContent').innerHTML=`
+  <!-- OV Search -->
+  <div style="background:#fff;border-radius:10px;padding:10px 16px;margin-bottom:8px;border:1px solid #f1f5f9;display:flex;align-items:center;gap:10px">
+    <span style="font-size:14px">🔍</span>
+    <input id="ovSearchInput" type="text" placeholder="Buscar número de OV (ej: DIP173362)..."
+      style="flex:1;border:none;outline:none;font-size:13px;color:#1e293b;background:transparent"
+      oninput="filterOVTable(this.value)">
+    <span id="ovSearchCount" style="font-size:11px;color:#94a3b8"></span>
+    <button onclick="document.getElementById('ovSearchInput').value='';filterOVTable('')" style="border:none;background:none;cursor:pointer;color:#94a3b8;font-size:14px" title="Limpiar">✕</button>
+  </div>
   <!-- Filters -->
   <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;background:#fff;border-radius:10px;padding:12px 16px;margin-bottom:12px;border:1px solid #f1f5f9">
     <div class="fg"><label>Período</label><select onchange="OTIF_FILTER.period=this.value;OTIF_FILTER.pval=null;renderOTIF()">${periodOpts}</select></div>
@@ -1652,6 +1663,7 @@ function renderOTIF(){
         <th style="min-width:160px">Cliente</th>
         <th style="min-width:120px">Tipo despacho</th>
         <th style="min-width:120px">Representante</th>
+        <th style="min-width:110px">Tipo facturación</th>
         <th style="min-width:120px;text-align:center">Fecha/Hora comprometida</th>
         <th class="r" style="min-width:75px">Fill Rate</th>
         <th class="r" style="min-width:65px">In Full</th>
@@ -1659,15 +1671,16 @@ function renderOTIF(){
         <th class="r" style="min-width:70px">On Time</th>
         <th class="r" style="min-width:60px">OTIF</th>
       </tr></thead>
-      <tbody>${ovRows.slice(0,1000).map(o=>{
+      <tbody id="otifTbody">${ovRows.slice(0,1000).map(o=>{
         const mfr=avg(o.frs),minf=avg(o.infs),mtr=avg(o.trazs),mot=avg(o.ots),mot2=avg(o.otifs);
         const fhcom=o.dt&&o.hora?`<span style="color:#888;font-size:9px">${fDay(o.dt.day)}</span><br><strong>${o.hora.str}</strong>`:(o.dt?fDay(o.dt.day):'—');
-        return`<tr>
+        return`<tr data-ov="${o.doc}">
           <td style="font-weight:600;white-space:nowrap">${o.doc}</td>
           <td style="white-space:nowrap;color:#555">${o.bodega}</td>
           <td style="max-width:160px;word-break:break-word">${o.cliente||'—'}</td>
           <td style="white-space:nowrap;color:#555;font-size:10px">${o.modalidad||'—'}</td>
           <td style="white-space:nowrap;color:#555;font-size:10px">${o.vendedor||'—'}</td>
+          <td style="white-space:nowrap;color:#555;font-size:10px">${o.tipoFact||'—'}</td>
           <td style="text-align:center;white-space:nowrap">${fhcom}</td>
           <td class="r">${pctCol(mfr,'Fill Rate')}</td>
           <td class="r">${pctCol(minf,'In Full')}</td>
@@ -1676,7 +1689,7 @@ function renderOTIF(){
           <td class="r">${pctCol(mot2,'OTIF')}</td>
         </tr>`;
       }).join('')}
-      ${ovRows.length>1000?`<tr><td colspan="11" style="text-align:center;color:#aaa;padding:8px">Mostrando 1000 de ${ovRows.length} OVs — usa filtros para acotar</td></tr>`:''}
+      ${ovRows.length>1000?`<tr><td colspan="12" style="text-align:center;color:#aaa;padding:8px">Mostrando 1000 de ${ovRows.length} OVs — usa filtros para acotar</td></tr>`:''}
       </tbody>
     </table></div>
   </div>
@@ -1875,6 +1888,21 @@ function renderOTIFComparativo(){
       <th>Período</th><th class="r">Líneas</th><th class="r">Fill Rate</th><th class="r">In Full</th>
       <th class="r">Trazabilidad</th><th class="r">On Time</th><th>OTIF</th>
     </tr></thead><tbody>${rows}</tbody></table></div></div>`;
+}
+
+// ─── OV SEARCH IN OTIF TABLE ─────────────────────────────────────────────────
+function filterOVTable(term){
+  const t=(term||'').trim().toUpperCase();
+  const rows=document.querySelectorAll('#otifTbody tr');
+  let visible=0;
+  rows.forEach(tr=>{
+    const ov=(tr.dataset.ov||'').toUpperCase();
+    const show=!t||ov.includes(t);
+    tr.style.display=show?'':'none';
+    if(show)visible++;
+  });
+  const cnt=document.getElementById('ovSearchCount');
+  if(cnt)cnt.textContent=t?`${visible} resultado${visible!==1?'s':''}`:'' ;
 }
 
 // ─── AUTO-LOAD desde data.json (GitHub Pages) ────────────────────────────────
