@@ -1433,13 +1433,16 @@ function handleDrivinFile(e){
         const hdr=rows[0].map(h=>String(h).trim());
         const ci=n=>hdr.findIndex(h=>h.toLowerCase().includes(n.toLowerCase()));
         const iOrd=ci('Código de Orden'), iAE=ci('Hora de Entrega'), iAZ=ci('Hora llegada a destino');
+        const iEst=ci('Estado de la'), iHIR=ci('Hora inicio ruta');
         if(iOrd<0){alert('No encontré Código de Orden en Drivin.');return;}
         DRIVIN_MAP={};
         for(let i=1;i<rows.length;i++){
           const r=rows[i];
           const cod=String(r[iOrd]||'').trim(); if(!cod)continue;
           const ae=String(r[iAE]||'').trim(); const az=String(r[iAZ]||'').trim();
-          if(!DRIVIN_MAP[cod]) DRIVIN_MAP[cod]={ae:ae||'',az:az||''};
+          const estadoOrden=iEst>=0?String(r[iEst]||'').trim():'';
+          const horaInicioRuta=iHIR>=0?String(r[iHIR]||'').trim():'';
+          if(!DRIVIN_MAP[cod]) DRIVIN_MAP[cod]={ae:ae||'',az:az||'',estadoOrden,horaInicioRuta};
         }
         DRIVIN_LOADED=true;
         buildOTIFLines();
@@ -1670,6 +1673,7 @@ function renderOTIF(){
         <th class="r" style="min-width:80px">Trazabilidad</th>
         <th class="r" style="min-width:70px">On Time</th>
         <th class="r" style="min-width:60px">OTIF</th>
+        <th style="min-width:110px">Estado Drivin</th>
       </tr></thead>
       <tbody id="otifTbody">${ovRows.slice(0,1000).map(o=>{
         const mfr=avg(o.frs),minf=avg(o.infs),mtr=avg(o.trazs),mot=avg(o.ots),mot2=avg(o.otifs);
@@ -1687,9 +1691,10 @@ function renderOTIF(){
           <td class="r">${pctCol(mtr,'Trazabilidad')}</td>
           <td class="r">${pctCol(mot,'On Time')}</td>
           <td class="r">${pctCol(mot2,'OTIF')}</td>
+          <td>${(()=>{const ed=calcEstadoDrivin(o.doc);return`<span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600;background:${ed.bg};color:${ed.color}">${ed.label}</span>`;})()}</td>
         </tr>`;
       }).join('')}
-      ${ovRows.length>1000?`<tr><td colspan="12" style="text-align:center;color:#aaa;padding:8px">Mostrando 1000 de ${ovRows.length} OVs — usa filtros para acotar</td></tr>`:''}
+      ${ovRows.length>1000?`<tr><td colspan="13" style="text-align:center;color:#aaa;padding:8px">Mostrando 1000 de ${ovRows.length} OVs — usa filtros para acotar</td></tr>`:''}
       </tbody>
     </table></div>
   </div>
@@ -1890,7 +1895,20 @@ function renderOTIFComparativo(){
     </tr></thead><tbody>${rows}</tbody></table></div></div>`;
 }
 
-// ─── OV SEARCH IN OTIF TABLE ─────────────────────────────────────────────────
+// ─── ESTADO DRIVIN ───────────────────────────────────────────────────────────
+function calcEstadoDrivin(doc){
+  const drv=DRIVIN_MAP[doc];
+  if(!drv) return {label:'Sin ruta',color:'#94a3b8',bg:'#f1f5f9'};
+  const est=(drv.estadoOrden||'').toLowerCase().trim();
+  const hir=(drv.horaInicioRuta||'').trim();
+  if(!est&&!hir)                              return{label:'Sin ruta',   color:'#94a3b8',bg:'#f1f5f9'};
+  if(est.includes('pendiente')&&hir)          return{label:'En Tránsito',color:'#1d4ed8',bg:'#dbeafe'};
+  if(est.includes('pendiente')&&!hir)         return{label:'Asignada',   color:'#d97706',bg:'#fef3c7'};
+  if(est.includes('aprobad'))                 return{label:'Aprobada',   color:'#16a34a',bg:'#dcfce7'};
+  return{label:'Sin ruta',color:'#94a3b8',bg:'#f1f5f9'};
+}
+
+
 function filterOVTable(term){
   const t=(term||'').trim().toUpperCase();
   const rows=document.querySelectorAll('#otifTbody tr');
