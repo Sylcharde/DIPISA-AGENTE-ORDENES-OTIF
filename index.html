@@ -1957,14 +1957,14 @@ function cargarDesdeJSON(){
   document.getElementById('autoLoadBanner').style.display='none';
   const prog=document.getElementById('ovProgress');
   if(prog) prog.textContent='⚡ Cargando datos guardados...';
-  if(data.drivin&&Object.keys(data.drivin).length){
-    DRIVIN_MAP=data.drivin;DRIVIN_LOADED=true;
-  }
   FNAME=data.fname_ov||'datos-guardados.xls';
   setTimeout(()=>{
     try{
-      buildRecords(data.rows);
-      if(DRIVIN_LOADED)buildOTIFLines();
+      buildRecords(data.rows); // resetea DRIVIN_MAP/DRIVIN_LOADED → setear Drivin después
+      if(data.drivin&&Object.keys(data.drivin).length){
+        DRIVIN_MAP=data.drivin;DRIVIN_LOADED=true;
+        buildOTIFLines();
+      }
       if(prog)prog.textContent='';
     }catch(e){if(prog)prog.textContent='Error: '+e.message;}
   },50);
@@ -1996,13 +1996,14 @@ function cargarDesdeServidor(){
     fetch(API_BASE+'/ov').then(r=>r.json()),
     fetch(API_BASE+'/drivin').then(r=>r.json())
   ]).then(([ovData,drvData])=>{
+    FNAME='SQL Server — DetalleOV';
+    buildRecords(ovData.rows); // ⚠ esto resetea DRIVIN_MAP/DRIVIN_LOADED internamente
+    // Por eso seteamos Drivin DESPUÉS de buildRecords, no antes
     if(drvData.drivin&&Object.keys(drvData.drivin).length){
       DRIVIN_MAP=drvData.drivin;
       DRIVIN_LOADED=true;
+      buildOTIFLines();
     }
-    FNAME='SQL Server — DetalleOV';
-    buildRecords(ovData.rows);
-    if(DRIVIN_LOADED)buildOTIFLines();
     if(prog)prog.textContent='';
   }).catch(e=>{
     if(prog)prog.textContent='Error conectando al servidor: '+e.message;
