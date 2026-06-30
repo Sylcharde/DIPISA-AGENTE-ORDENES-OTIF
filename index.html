@@ -232,6 +232,18 @@ tr.overdue td{background:#fff1f2}tr.urgent td{background:#fff7ed}
       <button onclick="document.getElementById('autoLoadBanner').style.display='none'" style="padding:8px 12px;background:#f1f5f9;color:#64748b;border:none;border-radius:8px;font-size:12px;cursor:pointer">✕</button>
     </div>
   </div>
+
+  <!-- Server load (SQL Server vía API local) -->
+  <div id="serverLoadBanner" style="display:none;max-width:600px;width:100%;background:#fff;border:1.5px solid #16a34a;border-radius:12px;padding:14px 18px;margin-top:10px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <span style="font-size:18px">🗄️</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:#1e293b">Servidor SQL detectado</div>
+        <div style="font-size:11px;color:#64748b;margin-top:1px" id="serverLoadSub"></div>
+      </div>
+      <button onclick="cargarDesdeServidor()" style="padding:8px 18px;background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap">🗄️ Cargar desde SQL Server</button>
+    </div>
+  </div>
   <span class="ov-skip" id="ovSkip" style="display:none" onclick="revealLayout()">Continuar sin Drivin →</span>
 </div>
 
@@ -1958,6 +1970,46 @@ function cargarDesdeJSON(){
   },50);
 }
 window.addEventListener('load',()=>setTimeout(checkAutoLoad,800));
+
+// ─── CARGA DESDE SQL SERVER (vía API local Flask) ────────────────────────────
+const API_BASE='http://localhost:5000';
+
+function checkServerAvailable(){
+  fetch(API_BASE+'/status',{signal:AbortSignal.timeout(1500)})
+    .then(r=>r.json())
+    .then(d=>{
+      if(!d.ok)return;
+      const sub=document.getElementById('serverLoadSub');
+      if(sub)sub.textContent=`OV: ${d.ov_rows||0} líneas · Drivin: ${d.drivin_rows||0} registros`;
+      const banner=document.getElementById('serverLoadBanner');
+      if(banner)banner.style.display='flex';
+    })
+    .catch(()=>{}); // API no corriendo → silencioso, no afecta carga manual
+}
+
+function cargarDesdeServidor(){
+  document.getElementById('serverLoadBanner').style.display='none';
+  const prog=document.getElementById('ovProgress');
+  if(prog)prog.textContent='🗄️ Cargando desde SQL Server...';
+
+  Promise.all([
+    fetch(API_BASE+'/ov').then(r=>r.json()),
+    fetch(API_BASE+'/drivin').then(r=>r.json())
+  ]).then(([ovData,drvData])=>{
+    if(drvData.drivin&&Object.keys(drvData.drivin).length){
+      DRIVIN_MAP=drvData.drivin;
+      DRIVIN_LOADED=true;
+    }
+    FNAME='SQL Server — DetalleOV';
+    buildRecords(ovData.rows);
+    if(DRIVIN_LOADED)buildOTIFLines();
+    if(prog)prog.textContent='';
+  }).catch(e=>{
+    if(prog)prog.textContent='Error conectando al servidor: '+e.message;
+  });
+}
+
+window.addEventListener('load',()=>setTimeout(checkServerAvailable,500));
 
 if(window.speechSynthesis)window.speechSynthesis.getVoices();
 </script>
