@@ -1964,6 +1964,8 @@ function cargarDesdeJSON(){
       if(data.drivin&&Object.keys(data.drivin).length){
         DRIVIN_MAP=data.drivin;DRIVIN_LOADED=true;
         buildOTIFLines();
+        updateTopBar();updateSidebar();
+        if(activeView==='otif')renderOTIF();
       }
       if(prog)prog.textContent='';
     }catch(e){if(prog)prog.textContent='Error: '+e.message;}
@@ -2003,6 +2005,10 @@ function cargarDesdeServidor(){
       DRIVIN_MAP=drvData.drivin;
       DRIVIN_LOADED=true;
       buildOTIFLines();
+      // Refrescar indicadores de la UI (se renderizaron con DRIVIN_LOADED=false dentro de buildRecords)
+      updateTopBar();
+      updateSidebar();
+      if(activeView==='otif')renderOTIF();
     }
     if(prog)prog.textContent='';
   }).catch(e=>{
